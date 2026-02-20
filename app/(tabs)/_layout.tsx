@@ -1,57 +1,57 @@
+
+import { Tabs } from 'expo-router';
+import { BarChart, LayoutGrid, MessageCircle, Settings } from 'lucide-react-native';
+import { useColorScheme } from 'nativewind';
 import React from 'react';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Link, Tabs } from 'expo-router';
-import { Pressable } from 'react-native';
-
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { useClientOnlyValue } from '@/components/useClientOnlyValue';
-
-// You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
-function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>['name'];
-  color: string;
-}) {
-  return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
-}
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const { colorScheme } = useColorScheme();
+
+  // Custom colors for light/dark mode
+  // Using hardcoded colors for now to match style
+  // Active tint color: green (from screenshot)
+  const activeColor = '#10B981'; // emerald-500
+  const inactiveColor = '#9CA3AF'; // gray-400
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
-        headerShown: useClientOnlyValue(false, true),
+        tabBarActiveTintColor: activeColor,
+        tabBarInactiveTintColor: inactiveColor,
+        headerShown: false,
+        tabBarStyle: {
+          borderTopWidth: 0,
+          elevation: 0,
+          height: 60,
+          paddingBottom: 5,
+        },
       }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Tab One',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
-          headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable>
-                {({ pressed }) => (
-                  <FontAwesome
-                    name="info-circle"
-                    size={25}
-                    color={Colors[colorScheme ?? 'light'].text}
-                    style={{ marginRight: 15, opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
-          ),
+          title: '首页',
+          tabBarIcon: ({ color }) => <MessageCircle size={24} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="two"
+        name="memos"
         options={{
-          title: 'Tab Two',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
+          title: '备忘',
+          tabBarIcon: ({ color }) => <LayoutGrid size={24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="analysis"
+        options={{
+          title: '分析',
+          tabBarIcon: ({ color }) => <BarChart size={24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: '我',
+          tabBarIcon: ({ color }) => <Settings size={24} color={color} />,
         }}
       />
     </Tabs>

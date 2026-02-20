@@ -5,12 +5,13 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
+import "../global.css";
 
-import { useColorScheme } from '@/components/useColorScheme';
+import { useColorScheme } from 'nativewind';
 
 export {
   // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
+  ErrorBoundary
 } from 'expo-router';
 
 export const unstable_settings = {
@@ -20,6 +21,11 @@ export const unstable_settings = {
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
+
+
+import { initDb } from '@/services/db';
+
+// ... (imports)
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
@@ -32,9 +38,22 @@ export default function RootLayout() {
     if (error) throw error;
   }, [error]);
 
+
   useEffect(() => {
+    async function prepare() {
+      try {
+        await initDb(); // Initialize SQLite DB
+      } catch (e) {
+        console.warn(e);
+      } finally {
+        if (loaded) {
+          SplashScreen.hideAsync();
+        }
+      }
+    }
+
     if (loaded) {
-      SplashScreen.hideAsync();
+      prepare();
     }
   }, [loaded]);
 
@@ -42,18 +61,24 @@ export default function RootLayout() {
     return null;
   }
 
+
   return <RootLayoutNav />;
 }
 
+
+import { SettingsProvider } from '@/services/SettingsContext';
+
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
+  const { colorScheme } = useColorScheme();
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
-    </ThemeProvider>
+    <SettingsProvider>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+        </Stack>
+      </ThemeProvider>
+    </SettingsProvider>
   );
 }
