@@ -14,7 +14,12 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "允许使用语音识别将您说的话转换为文字",
+        "NSMicrophoneUsageDescription": "允许访问麦克风以使用语音输入功能"
+      },
+      "bundleIdentifier": "com.anonymous.chat-app"
     },
     "android": {
       "adaptiveIcon": {
@@ -22,7 +27,11 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.jett.chatapp"
     },
     "web": {
       "bundler": "metro",
@@ -31,10 +40,23 @@
     },
     "plugins": [
       "expo-router",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "允许访问麦克风以使用语音输入功能",
+          "speechRecognitionPermission": "允许使用语音识别将您说的话转换为文字"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "a82d3562-fa8c-41da-9f2b-8205a3eea709"
+      }
     }
   }
 }

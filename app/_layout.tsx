@@ -1,3 +1,25 @@
+import 'react-native-get-random-values';
+import 'react-native-url-polyfill/auto';
+import { TextDecoder, TextEncoder } from 'text-encoding';
+if (typeof global.TextEncoder === 'undefined') {
+  global.TextEncoder = TextEncoder;
+  global.TextDecoder = TextDecoder as any;
+}
+
+if (typeof navigator !== 'undefined' && !navigator.userAgent) {
+  (navigator as any).userAgent = 'ReactNative';
+}
+
+if (typeof AbortSignal !== 'undefined') {
+  if (!AbortSignal.prototype.throwIfAborted) {
+    AbortSignal.prototype.throwIfAborted = function () {
+      if (this.aborted) {
+        throw this.reason || new Error('Operation was aborted');
+      }
+    };
+  }
+}
+
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';

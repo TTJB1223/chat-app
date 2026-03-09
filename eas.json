@@ -1,0 +1,26 @@
+{
+    "cli": {
+        "version": ">= 3.8.1"
+    },
+    "build": {
+        "development": {
+            "developmentClient": true,
+            "distribution": "internal"
+        },
+        "preview": {
+            "distribution": "internal",
+            "android": {
+                "buildType": "apk"
+            },
+            "env": {
+                "EXPO_PUBLIC_VOLC_API_KEY": "f9b3bcbf-1e90-4956-b019-b85732c866db",
+                "EXPO_PUBLIC_BAIDU_API_KEY": "chfMi9WrR3IibMmIbsD9yTh3",
+                "EXPO_PUBLIC_BAIDU_SECRET_KEY": "2V8r48xNXhwHPs7k3iVGptOUbGaSj6Yy"
+            }
+        },
+        "production": {}
+    },
+    "submit": {
+        "production": {}
+    }
+}

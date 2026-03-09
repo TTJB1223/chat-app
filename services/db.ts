@@ -5,8 +5,9 @@ import { Platform } from 'react-native';
 export interface Memo {
     id: number;
     content: string;
-    category: 'Have Fun' | 'Earning' | 'Learning' | 'ToDoList' | 'Insights';
+    category: string;
     timestamp: string;
+    targetDate?: string;
 }
 
 export interface ChatMessage {
@@ -47,7 +48,8 @@ export const initDb = async () => {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 content TEXT,
                 category TEXT,
-                timestamp TEXT
+                timestamp TEXT,
+                targetDate TEXT
             );
 
             CREATE TABLE IF NOT EXISTS sessions (
@@ -64,6 +66,14 @@ export const initDb = async () => {
                 timestamp TEXT
             );
         `);
+
+        // Migration: add targetDate if not exists
+        try {
+            await db.execAsync("ALTER TABLE memos ADD COLUMN targetDate TEXT;");
+        } catch (e) {
+            // Column might already exist
+        }
+
         console.log('✅ SQLite Database Initialized');
     } catch (error) {
         console.error('❌ Failed to init DB:', error);
@@ -72,12 +82,12 @@ export const initDb = async () => {
 
 // --- Memo Operations ---
 
-export const addMemo = async (content: string, category: string) => {
+export const addMemo = async (content: string, category: string, targetDate?: string) => {
     if (db) {
         const timestamp = new Date().toISOString();
         const result = await db.runAsync(
-            'INSERT INTO memos (content, category, timestamp) VALUES (?, ?, ?)',
-            content, category, timestamp
+            'INSERT INTO memos (content, category, timestamp, targetDate) VALUES (?, ?, ?, ?)',
+            content, category, timestamp, targetDate || null
         );
         return result.lastInsertRowId;
     } else {
@@ -85,13 +95,28 @@ export const addMemo = async (content: string, category: string) => {
         const newMemo: Memo = {
             id: nextMemoId++,
             content,
-            // @ts-ignore
             category,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            targetDate
         };
         memoryMemos.push(newMemo);
         return newMemo.id;
     }
+};
+
+export const deleteMemo = async (id: number) => {
+    if (db) {
+        await db.runAsync('DELETE FROM memos WHERE id = ?', id);
+    } else {
+        memoryMemos = memoryMemos.filter(m => m.id !== id);
+    }
+};
+
+export const getMemo = async (id: number): Promise<Memo | undefined> => {
+    if (db) {
+        return await db.getFirstAsync('SELECT * FROM memos WHERE id = ?', id) || undefined;
+    }
+    return memoryMemos.find(m => m.id === id);
 };
 
 export const getMemos = async (): Promise<Memo[]> => {
@@ -162,13 +187,11 @@ export const getSessions = async (): Promise<ChatSession[]> => {
     if (db) {
         const sessions = await db.getAllAsync('SELECT * FROM sessions ORDER BY createdAt DESC');
 
-        // Populate messages for each session (Optimization: In a real large app, fetch mostly recent msg)
-        // For now, we fetch all to match the interface needed by UI
         const populatedSessions: ChatSession[] = [];
 
         for (const session of sessions) {
-            const messages = await db.getAllAsync(
-                'SELECT * FROM messages WHERE sessionId = ? ORDER BY timestamp ASC',
+            const lastMessage = await db.getFirstAsync(
+                'SELECT * FROM messages WHERE sessionId = ? ORDER BY timestamp DESC LIMIT 1',
                 // @ts-ignore
                 session.id
             );
@@ -176,7 +199,7 @@ export const getSessions = async (): Promise<ChatSession[]> => {
                 // @ts-ignore
                 ...session,
                 // @ts-ignore
-                messages: messages
+                messages: lastMessage ? [lastMessage] : []
             });
         }
         return populatedSessions;
@@ -184,7 +207,10 @@ export const getSessions = async (): Promise<ChatSession[]> => {
     }
     return [...memorySessions].sort((a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    ).map(s => ({
+        ...s,
+        messages: s.messages.length > 0 ? [s.messages[s.messages.length - 1]] : []
+    }));
 };
 
 export const getSession = async (id: string): Promise<ChatSession | undefined> => {
@@ -192,19 +218,32 @@ export const getSession = async (id: string): Promise<ChatSession | undefined> =
         const session = await db.getFirstAsync('SELECT * FROM sessions WHERE id = ?', id);
         if (!session) return undefined;
 
-        const messages = await db.getAllAsync(
-            'SELECT * FROM messages WHERE sessionId = ? ORDER BY timestamp ASC',
-            id
-        );
-
         return {
-            // @ts-ignore
-            ...session,
-            // @ts-ignore
-            messages: messages
+            id: (session as any).id,
+            title: (session as any).title,
+            createdAt: (session as any).createdAt,
+            messages: []
         } as ChatSession;
     }
-    return memorySessions.find(s => s.id === id);
+    const memSession = memorySessions.find(s => s.id === id);
+    if (memSession) {
+        return { ...memSession, messages: [] };
+    }
+    return undefined;
+};
+
+export const getSessionMessages = async (id: string, offset: number = 0, limit: number = 30): Promise<ChatMessage[]> => {
+    if (db) {
+        const messages = await db.getAllAsync(
+            'SELECT * FROM messages WHERE sessionId = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?',
+            id, limit, offset
+        );
+        return (messages as ChatMessage[]).reverse();
+    }
+    const session = memorySessions.find(s => s.id === id);
+    if (!session) return [];
+    const reversed = [...session.messages].reverse();
+    return reversed.slice(offset, offset + limit).reverse();
 };
 
 export const updateSessionTitle = async (id: string, title: string) => {

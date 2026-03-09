@@ -1,15 +1,110 @@
 
 import { transcribeAudio } from '@/services/audio';
-import { addMessageToSession, ChatMessage, ensureSessionCreated, getSession, updateSessionTitle } from '@/services/db';
-import { generateTitle, sendToLLM, SYSTEM_PROMPT } from '@/services/llm';
+import { addMessageToSession, ChatMessage, ensureSessionCreated, getSession, getSessionMessages, updateSessionTitle } from '@/services/db';
+import { agentExecutor, generateTitleAgent } from '@/services/llm';
 import { useSettings } from '@/services/SettingsContext';
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import clsx from 'clsx';
+
 import { Audio } from 'expo-av';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft, Mic, PlusCircle, Smile } from 'lucide-react-native';
+import { ChevronLeft, Keyboard as KeyboardIcon, Mic, PlusCircle, Smile } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, ImageBackground, Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, ImageBackground, Keyboard, KeyboardAvoidingView, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// 动态跳跳点（AI 思考中动画）
+function TypingDots() {
+    const [dots, setDots] = React.useState(1);
+    useEffect(() => {
+        const timer = setInterval(() => setDots(d => (d % 3) + 1), 500);
+        return () => clearInterval(timer);
+    }, []);
+    return (
+        <View style={{ flexDirection: 'row', alignItems: 'center', height: 22, gap: 4 }}>
+            {[1, 2, 3].map(i => (
+                <View
+                    key={i}
+                    style={{
+                        width: 7, height: 7, borderRadius: 4,
+                        backgroundColor: i <= dots ? '#07C160' : '#CCCCCC',
+                    }}
+                />
+            ))}
+        </View>
+    );
+}
+const MessageBubble = React.memo(({ msg }: { msg: ChatMessage }) => {
+    const isUser = msg.role === 'user';
+    return (
+        <View
+            className={clsx(
+                "flex-row mb-4 w-full",
+                isUser ? "justify-end" : "justify-start"
+            )}
+        >
+            {!isUser && (
+                <View className="mr-3">
+                    <View className="w-10 h-10 rounded-md bg-white overflow-hidden shadow-sm">
+                        <Image
+                            source={{ uri: 'https://api.dicebear.com/9.x/notionists/png?seed=Felix' }}
+                            className="w-full h-full"
+                            resizeMode="cover"
+                        />
+                    </View>
+                </View>
+            )}
+
+            <View className={clsx("max-w-[70%]", isUser ? "items-end" : "items-start")}>
+                {/* Bubble */}
+                <View
+                    className={clsx(
+                        "px-3 py-2.5 rounded-md relative",
+                        isUser
+                            ? "bg-[#95EC69]"
+                            : "bg-white"
+                    )}
+                    style={{
+                        borderRadius: 6,
+                    }}
+                >
+                    {/* Tail */}
+                    <View
+                        className={clsx(
+                            "absolute w-3 h-3 top-3 rotate-45",
+                            isUser
+                                ? "bg-[#95EC69] -right-1.5"
+                                : "bg-white -left-1.5"
+                        )}
+                    />
+
+                    {msg.content === '__typing__' ? (
+                        <TypingDots />
+                    ) : (
+                        <Text className="text-[16px] leading-[22px] text-[#181818]">
+                            {msg.content}
+                        </Text>
+                    )}
+                </View>
+            </View>
+
+            {isUser && (
+                <View className="ml-3">
+                    <View className="w-10 h-10 rounded-md bg-gray-300 overflow-hidden">
+                        <Image
+                            source={{ uri: 'https://api.dicebear.com/9.x/avataaars/png?seed=Jett' }}
+                            className="w-full h-full"
+                            resizeMode="cover"
+                        />
+                    </View>
+                </View>
+            )}
+        </View>
+    );
+}, (prevProps, nextProps) => {
+    // Only re-render if content changes (vital for streaming AI responses hitting the *same* message ID)
+    return prevProps.msg.id === nextProps.msg.id && prevProps.msg.content === nextProps.msg.content;
+});
 
 export default function ChatDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -21,10 +116,11 @@ export default function ChatDetailScreen() {
     const [inputText, setInputText] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const [sessionTitle, setSessionTitle] = useState('新对话');
-    const scrollViewRef = useRef<ScrollView>(null);
+    const flatListRef = useRef<FlatList>(null);
     const [isNewSession, setIsNewSession] = useState(false);
     const [inputHeight, setInputHeight] = useState(40);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
+    const [inputMode, setInputMode] = useState<'text' | 'voice'>('text');
     const [recording, setRecording] = useState<Audio.Recording | null>(null);
     const [isTranscribing, setIsTranscribing] = useState(false);
 
@@ -47,14 +143,11 @@ export default function ChatDetailScreen() {
         };
     }, [id]);
 
+
     async function startRecording() {
         try {
             await Audio.requestPermissionsAsync();
-            await Audio.setAudioModeAsync({
-                allowsRecordingIOS: true,
-                playsInSilentModeIOS: true,
-            });
-
+            await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
             const { recording } = await Audio.Recording.createAsync(
                 Audio.RecordingOptionsPresets.HIGH_QUALITY
             );
@@ -66,18 +159,17 @@ export default function ChatDetailScreen() {
 
     async function stopRecording() {
         if (!recording) return;
-
         setIsTranscribing(true);
         try {
             await recording.stopAndUnloadAsync();
             const uri = recording.getURI();
             setRecording(null);
-
             if (uri) {
                 const text = await transcribeAudio(uri);
                 if (text) {
-                    // Append the transcribed text to whatever is already in the input
-                    setInputText(prev => prev ? prev + ' ' + text : text);
+                    // 识别完直接发送，无需手动点发送
+                    sendMessageText(text);
+                    setInputMode('text');
                 }
             }
         } catch (error) {
@@ -87,15 +179,25 @@ export default function ChatDetailScreen() {
         }
     }
 
+    const PAGE_SIZE = 30;
+    const [hasMore, setHasMore] = useState(true);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+
     const loadSession = async (sessionId: string) => {
         const session = await getSession(sessionId);
         if (session) {
-            setMessages(session.messages);
             setSessionTitle(session.title);
             setIsNewSession(false);
+
+            const initialMessages = await getSessionMessages(sessionId, 0, PAGE_SIZE);
+            setMessages(initialMessages);
+            if (initialMessages.length < PAGE_SIZE) {
+                setHasMore(false);
+            }
         } else {
             // New Session State (not saved yet)
             setIsNewSession(true);
+            setHasMore(false);
             setMessages([
                 {
                     id: 'welcome',
@@ -107,10 +209,41 @@ export default function ChatDetailScreen() {
         }
     };
 
+    const loadMoreMessages = async () => {
+        if (!id || !hasMore || isLoadingMore || isNewSession) return;
+        setIsLoadingMore(true);
+        try {
+            const olderMessages = await getSessionMessages(id, messages.length, PAGE_SIZE);
+            if (olderMessages.length > 0) {
+                // olderMessages are ASC (older to newer). Prepend them to the current ASC messages list
+                setMessages(prev => [...olderMessages, ...prev]);
+            }
+            if (olderMessages.length < PAGE_SIZE) {
+                setHasMore(false);
+            }
+        } finally {
+            setIsLoadingMore(false);
+        }
+    };
+
+    // 核心发送逻辑，接受直接传入的文字（供语音识别调用）
+    const sendMessageText = async (text: string) => {
+        if (!text.trim() || isTyping || !id) return;
+
+        const userText = text.trim();
+        setInputText(''); // 清空输入框
+        await _doSendMessage(userText);
+    };
+
     const sendMessage = async () => {
         if (!inputText.trim() || isTyping || !id) return;
-
         const userText = inputText.trim();
+        setInputText('');
+        await _doSendMessage(userText);
+    };
+
+    const _doSendMessage = async (userText: string) => {
+
         const newUserMessage: ChatMessage = {
             id: Date.now().toString(),
             role: 'user',
@@ -124,10 +257,15 @@ export default function ChatDetailScreen() {
             setIsNewSession(false);
         }
 
-        // 1. Update UI & DB
-        // Use functional state update to ensure we have the latest messages
-        setMessages(prev => [...prev, newUserMessage]);
-        setInputText('');
+        // 1. 立刻插入用户消息 + AI 占位气泡（避免双头像）
+        const tempAiMsgId = (Date.now() + 1).toString();
+        const tempAiMessage: ChatMessage = {
+            id: tempAiMsgId,
+            role: 'assistant',
+            content: '__typing__',
+            timestamp: new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, newUserMessage, tempAiMessage]);
         setIsTyping(true);
 
         await addMessageToSession(id, newUserMessage);
@@ -139,7 +277,7 @@ export default function ChatDetailScreen() {
             // Re-implementing specific check:
             const isFirstMessage = messages.filter(m => m.role === 'user').length === 0;
             if (isFirstMessage) {
-                generateTitle(userText).then(async (newTitle) => {
+                generateTitleAgent(userText).then(async (newTitle) => {
                     await updateSessionTitle(id, newTitle);
                     setSessionTitle(newTitle);
                 });
@@ -147,72 +285,70 @@ export default function ChatDetailScreen() {
         }
 
         try {
-            // 2. Prepare context
-            // We need to include the new user message in the history sent to API
+            // 2. 准备历史消息上下文
             const currentMsgs = [...messages, newUserMessage];
-            const historyForAPI = [
-                { role: 'system', content: SYSTEM_PROMPT },
-                ...currentMsgs
-            ].map(m => ({
-                role: m.role as 'system' | 'user' | 'assistant',
-                content: m.content
-            }));
+            const chatHistory = currentMsgs
+                .filter(m => m.id !== 'welcome' && m.id !== newUserMessage.id)
+                .map(m => m.role === 'user' ? new HumanMessage(m.content) : new AIMessage(m.content));
 
-            // 3. Create a temporary AI message placeholder
-            const tempAiMsgId = (Date.now() + 1).toString();
-            const tempAiMessage: ChatMessage = {
-                id: tempAiMsgId,
-                role: 'assistant',
-                content: '...', // Initial placeholder
-                timestamp: new Date().toISOString(),
-            };
-
-            setMessages(prev => [...prev, tempAiMessage]);
-
-            // 4. Call API with Streaming
+            // 3. 调用 API 流式输出
             let accumulatedContent = '';
+            let lastUpdateTime = 0;
 
-            await sendToLLM(historyForAPI, (chunk) => {
-                accumulatedContent = chunk;
+            const stream = await agentExecutor.streamEvents(
+                {
+                    messages: [...chatHistory, new HumanMessage(userText)]
+                },
+                { version: "v2" }
+            );
 
-                // Update the UI with the partial content
-                setMessages(prev => {
-                    return prev.map(msg =>
-                        msg.id === tempAiMsgId
-                            ? { ...msg, content: chunk || '...' }
-                            : msg
-                    );
-                });
-            });
+            for await (const event of stream) {
+                const eventType = event.event;
 
-            // 5. Post-processing (Save Memo, Save AI Message to DB)
-            const aiReplyContent = accumulatedContent;
-            let displayContent = aiReplyContent;
+                if (eventType === "on_chat_model_stream") {
+                    const chunk = event.data.chunk?.content;
+                    if (chunk && typeof chunk === 'string') {
+                        accumulatedContent += chunk;
 
-            // --- Core Logic: Extract JSON and Save Memo ---
-            const jsonMatch = aiReplyContent.match(/```json\n([\s\S]*?)\n```/);
-
-            if (jsonMatch && jsonMatch[1]) {
-                try {
-                    const actionData = JSON.parse(jsonMatch[1]);
-
-                    if (actionData.action === 'save_memo') {
-                        const { addMemo } = require('@/services/db');
-                        await addMemo(actionData.content, actionData.category);
-                        console.log("Memo Saved:", actionData);
+                        // Throttling UI updates to avoid freezing RN thread
+                        const now = Date.now();
+                        if (now - lastUpdateTime > 80) {
+                            lastUpdateTime = now;
+                            setMessages(prev => {
+                                return prev.map(msg =>
+                                    msg.id === tempAiMsgId
+                                        ? { ...msg, content: accumulatedContent || '思考中...' }
+                                        : msg
+                                );
+                            });
+                        }
                     }
-                    displayContent = aiReplyContent.replace(/```json[\s\S]*```/, '').trim();
-                } catch (e) {
-                    console.error("Failed to parse AI JSON", e);
+                } else if (eventType === "on_chat_model_end") {
+                    const outputContent = event.data.output?.content;
+                    if (outputContent && typeof outputContent === 'string') {
+                        // If streaming is broken/disabled on RN, it comes here bulk.
+                        if (!accumulatedContent.includes(outputContent)) {
+                            accumulatedContent = outputContent;
+                            setMessages(prev => prev.map(msg => msg.id === tempAiMsgId ? { ...msg, content: accumulatedContent || '已处理完毕。' } : msg));
+                        }
+                    }
+                } else if (eventType === "on_tool_start" && event.name === 'save_memo') {
+                    // Update UI to show that a tool is being called
+                    setMessages(prev => {
+                        return prev.map(msg =>
+                            msg.id === tempAiMsgId
+                                ? { ...msg, content: accumulatedContent ? accumulatedContent + '\n\n[正在保存备忘录...]' : '[正在保存备忘录...]' }
+                                : msg
+                        );
+                    });
                 }
             }
-            // ----------------------------------
 
             // Final Update for UI & DB
             const finalAiMessage: ChatMessage = {
                 id: tempAiMsgId,
                 role: 'assistant',
-                content: displayContent,
+                content: accumulatedContent || '已处理完毕。',
                 timestamp: new Date().toISOString(),
             };
 
@@ -222,12 +358,12 @@ export default function ChatDetailScreen() {
             // Persist to DB
             await addMessageToSession(id, finalAiMessage);
 
-        } catch (error) {
+        } catch (error: any) {
             console.log(error);
             const errorMessage: ChatMessage = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
-                content: '哎呀，网络好像开小差了，请重试一下 😖',
+                content: '哎呀，网络好像开小差了，请重试一下 😖\n错误信:\n' + (error?.message || error?.toString()),
                 timestamp: new Date().toISOString(),
             };
             setMessages((prev) => [...prev, errorMessage]);
@@ -235,12 +371,6 @@ export default function ChatDetailScreen() {
             setIsTyping(false);
         }
     };
-
-    useEffect(() => {
-        setTimeout(() => {
-            scrollViewRef.current?.scrollToEnd({ animated: true });
-        }, 100);
-    }, [messages, isTyping]);
 
     return (
         <SafeAreaView className="flex-1 bg-[#EDEDED]" edges={['top']}>
@@ -275,136 +405,84 @@ export default function ChatDetailScreen() {
                 className={`flex-1 ${chatBackground ? 'bg-transparent' : 'bg-[#EDEDED]'}`}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
             >
-                {/* Recording / Transcribing Overlay */}
+                {/* 录音中 / 识别中 覆盖层 */}
                 {recording && (
                     <View className="absolute top-1/2 left-1/2 -mt-16 -ml-16 w-32 h-32 bg-black/70 rounded-2xl items-center justify-center z-50">
-                        <Mic size={40} color="white" className="mb-2" />
-                        <Text className="text-white font-medium">松开 结束</Text>
+                        <Mic size={40} color="white" />
+                        <Text className="text-white font-medium mt-2">松开 结束</Text>
                     </View>
                 )}
                 {isTranscribing && (
                     <View className="absolute top-1/2 left-1/2 -mt-16 -ml-16 w-32 h-32 bg-black/70 rounded-2xl items-center justify-center z-50">
-                        <Text className="text-white font-medium">识别中...</Text>
+                        <ActivityIndicator color="white" size="large" />
+                        <Text className="text-white font-medium mt-2">识别中...</Text>
                     </View>
                 )}
 
-                <ScrollView
-                    ref={scrollViewRef}
-                    className="flex-1 px-3 py-4"
-                    contentContainerStyle={{ paddingBottom: 20 }}
-                >
-                    {messages.map((msg, index) => {
-                        const isUser = msg.role === 'user';
-
-                        return (
-                            <View
-                                key={msg.id}
-                                className={clsx(
-                                    "flex-row mb-4 w-full",
-                                    isUser ? "justify-end" : "justify-start"
-                                )}
-                            >
-                                {!isUser && (
-                                    <View className="mr-3">
-                                        <View className="w-10 h-10 rounded-md bg-white overflow-hidden shadow-sm">
-                                            <Image
-                                                source={{ uri: 'https://api.dicebear.com/9.x/notionists/png?seed=Felix' }}
-                                                className="w-full h-full"
-                                                resizeMode="cover"
-                                            />
-                                        </View>
-                                    </View>
-                                )}
-
-                                <View className={clsx("max-w-[70%]", isUser ? "items-end" : "items-start")}>
-                                    {/* Bubble */}
-                                    <View
-                                        className={clsx(
-                                            "px-3 py-2.5 rounded-md relative",
-                                            isUser
-                                                ? "bg-[#95EC69]"
-                                                : "bg-white"
-                                        )}
-                                        style={{
-                                            borderRadius: 6,
-                                        }}
-                                    >
-                                        {/* Tail */}
-                                        <View
-                                            className={clsx(
-                                                "absolute w-3 h-3 top-3 rotate-45",
-                                                isUser
-                                                    ? "bg-[#95EC69] -right-1.5"
-                                                    : "bg-white -left-1.5"
-                                            )}
-                                        />
-
-                                        <Text className="text-[16px] leading-[22px] text-[#181818]">
-                                            {msg.content}
-                                        </Text>
-                                    </View>
-                                </View>
-
-                                {isUser && (
-                                    <View className="ml-3">
-                                        <View className="w-10 h-10 rounded-md bg-gray-300 overflow-hidden">
-                                            <Image
-                                                source={{ uri: 'https://api.dicebear.com/9.x/avataaars/png?seed=Jett' }}
-                                                className="w-full h-full"
-                                                resizeMode="cover"
-                                            />
-                                        </View>
-                                    </View>
-                                )}
+                <FlatList
+                    ref={flatListRef}
+                    className="flex-1 px-3"
+                    data={[...messages].reverse()}
+                    keyExtractor={(item) => item.id}
+                    inverted
+                    onEndReached={loadMoreMessages}
+                    onEndReachedThreshold={0.5}
+                    contentContainerStyle={{ paddingVertical: 16, flexGrow: 1, justifyContent: 'flex-end' }}
+                    renderItem={({ item }) => <MessageBubble msg={item} />}
+                    ListHeaderComponent={null}
+                    ListFooterComponent={() => (
+                        isLoadingMore ? (
+                            <View className="py-4 items-center">
+                                <ActivityIndicator size="small" color="#999" />
                             </View>
-                        );
-                    })}
-
-                    {isTyping && (
-                        <View className="flex-row justify-start mb-4">
-                            <View className="mr-3">
-                                <View className="w-10 h-10 rounded-md bg-white overflow-hidden shadow-sm">
-                                    <Image
-                                        source={{ uri: 'https://api.dicebear.com/9.x/notionists/png?seed=Felix' }}
-                                        className="w-full h-full"
-                                        resizeMode="cover"
-                                    />
-                                </View>
-                            </View>
-                            <View className="relative bg-white px-3 py-2.5 rounded-md">
-                                <View className="absolute w-3 h-3 top-3 rotate-45 bg-white -left-1.5" />
-                                <Text className="text-gray-400">正在输入...</Text>
-                            </View>
-                        </View>
+                        ) : null
                     )}
-                </ScrollView>
+                />
 
                 {/* Input Area (WeChat Style) */}
                 <View
                     className="px-2 py-2 bg-[#F7F7F7] border-t border-[#DCDCDC] flex-row items-end"
                     style={{ paddingBottom: keyboardVisible ? 10 : (insets.bottom + 10) }}
                 >
-                    {/* Voice Icon */}
+                    {/* Voice/Keyboard Toggle Icon */}
                     <TouchableOpacity
                         className="p-2 mb-1"
-                        onPressIn={startRecording}
-                        onPressOut={stopRecording}
+                        onPress={() => setInputMode(prev => prev === 'text' ? 'voice' : 'text')}
                         activeOpacity={0.7}
                     >
-                        <Mic size={28} color={recording ? "#07C160" : "#181818"} strokeWidth={1.5} />
+                        {inputMode === 'text' ? (
+                            <Mic size={28} color="#181818" strokeWidth={1.5} />
+                        ) : (
+                            <KeyboardIcon size={28} color="#181818" strokeWidth={1.5} />
+                        )}
                     </TouchableOpacity>
 
-                    {/* Input */}
-                    <View className="flex-1 bg-white rounded-md mx-1 mb-1.5 px-3 py-2 min-h-[40px] justify-center">
-                        <TextInput
-                            className="text-[16px] text-[#181818] leading-[20px] pt-0 pb-0"
-                            placeholder=""
-                            multiline
-                            value={inputText}
-                            onChangeText={setInputText}
-                            onContentSizeChange={(e) => setInputHeight(e.nativeEvent.contentSize.height)}
-                            style={{ maxHeight: 100 }}
-                        />
+                    {/* Input Area */}
+                    <View className="flex-1 mx-1 mb-1.5 justify-center">
+                        {inputMode === 'text' ? (
+                            <View className="bg-white rounded-md px-3 py-2 min-h-[40px] justify-center">
+                                <TextInput
+                                    className="text-[16px] text-[#181818] leading-[20px] pt-0 pb-0"
+                                    placeholder=""
+                                    multiline
+                                    value={inputText}
+                                    onChangeText={setInputText}
+                                    onContentSizeChange={(e) => setInputHeight(e.nativeEvent.contentSize.height)}
+                                    style={{ maxHeight: 100 }}
+                                />
+                            </View>
+                        ) : (
+                            <TouchableOpacity
+                                className={`rounded-md min-h-[40px] justify-center items-center ${recording ? 'bg-[#c6c6c6]' : 'bg-white'}`}
+                                activeOpacity={1}
+                                onPressIn={startRecording}
+                                onPressOut={stopRecording}
+                            >
+                                <Text className="text-[16px] font-medium text-[#181818]">
+                                    {recording ? '松开 结束' : '按住 说话'}
+                                </Text>
+                            </TouchableOpacity>
+                        )}
                     </View>
 
                     {/* Smile Icon */}
