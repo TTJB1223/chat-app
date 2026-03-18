@@ -1,7 +1,8 @@
 
 import { ChatSession, deleteSession, getSessions } from '@/services/db';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { MessageSquarePlus, Search, Trash2 } from 'lucide-react-native';
+import { MessageSquarePlus, Search, Trash2, Menu } from 'lucide-react-native';
+import SettingsSidebar from '@/components/SettingsSidebar';
 import React, { useCallback, useState } from 'react';
 import { Image, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,6 +12,7 @@ export default function ChatListScreen() {
   const router = useRouter();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [searchText, setSearchText] = useState('');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -70,7 +72,7 @@ export default function ChatListScreen() {
         activeOpacity={1} // Let SwipeListView handle touch
         style={{ height: 72 }} // Fixed height for consistent swipe
       >
-        <View className="w-12 h-12 rounded-lg bg-emerald-100 items-center justify-center mr-3 overflow-hidden">
+        <View className="w-12 h-12 rounded-lg bg-primary-light items-center justify-center mr-3 overflow-hidden">
           {/* Random Avatar based on ID */}
           <Image
             source={{ uri: `https://api.dicebear.com/9.x/notionists/png?seed=${item.id}` }}
@@ -105,10 +107,12 @@ export default function ChatListScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-[#EDEDED]" edges={['top']}>
+      <SettingsSidebar visible={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
       {/* Header */}
       <View className="px-4 py-3 bg-[#EDEDED] flex-row items-center justify-between z-10">
-        {/* Placeholder for left symmetry if needed, or just spacers */}
-        <View className="w-8" />
+        <TouchableOpacity onPress={() => setIsSidebarOpen(true)} className="p-1 justify-center">
+          <Menu size={24} color="#181818" />
+        </TouchableOpacity>
         <Text className="text-[18px] font-bold text-[#181818]">知录</Text>
         <TouchableOpacity onPress={handleNewChat} className="p-1 items-center justify-center">
           <MessageSquarePlus size={24} color="#181818" />

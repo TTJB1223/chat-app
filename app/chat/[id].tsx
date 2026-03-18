@@ -29,7 +29,7 @@ function TypingDots() {
                     key={i}
                     style={{
                         width: 7, height: 7, borderRadius: 4,
-                        backgroundColor: i <= dots ? '#07C160' : '#CCCCCC',
+                        backgroundColor: i <= dots ? '#3966A2' : '#CCCCCC',
                     }}
                 />
             ))}
@@ -540,7 +540,7 @@ export default function ChatDetailScreen() {
                         <TouchableOpacity
                             onPress={sendMessage}
                             activeOpacity={0.7}
-                            className="mb-1.5 px-3 py-1.5 bg-[#07C160] rounded-[4px] ml-1 mr-1 justify-center"
+                            className="mb-1.5 px-3 py-1.5 bg-[#3966A2] rounded-[4px] ml-1 mr-1 justify-center"
                             style={{ height: 34 }}
                         >
                             <Text className="font-medium text-white text-sm">发送</Text>

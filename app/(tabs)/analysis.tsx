@@ -75,8 +75,8 @@ export default function AnalysisScreen() {
             <View className="flex-row items-end justify-center h-40 mt-4 relative w-full px-4">
                 {/* 终点大本营与旗帜 */}
                 <View className="absolute right-6 -top-2 items-center z-10">
-                    <Flag size={28} color={activeStep === 5 ? "#07C160" : "#D1D5DB"} />
-                    <View className={`w-8 h-1.5 mt-1 rounded-full ${activeStep === 5 ? 'bg-[#07C160]/40 blur-md' : 'bg-transparent'}`} />
+                    <Flag size={28} color={activeStep === 5 ? "#3966A2" : "#D1D5DB"} />
+                    <View className={`w-8 h-1.5 mt-1 rounded-full ${activeStep === 5 ? 'bg-[#3966A2]/40 blur-md' : 'bg-transparent'}`} />
                 </View>
 
                 {/* 5步登高阶梯 */}
@@ -92,12 +92,12 @@ export default function AnalysisScreen() {
                         <View key={step} className="items-center justify-end mx-0.5">
                             {/* 阶梯上的踩点提示 */}
                             {step === activeStep && totalCount > 0 && (
-                                <View className="mb-1 w-2.5 h-2.5 rounded-full bg-[#07C160] shadow-sm shadow-[#07C160]" />
+                                <View className="mb-1 w-2.5 h-2.5 rounded-full bg-[#3966A2] shadow-sm shadow-[#3966A2]" />
                             )}
                             <View
                                 style={{ height: heightValue }}
                                 className={`w-12 rounded-t-xl ${isReached
-                                    ? `bg-[#07C160]`
+                                    ? `bg-[#3966A2]`
                                     : 'bg-[#F3F4F6]'
                                     }`}
                                 // NativeWind 不支持动态字符串拼类名解析透明度，所以我们用 style
@@ -141,7 +141,7 @@ export default function AnalysisScreen() {
                         <View className="items-end">
                             <Text className="text-gray-500 text-xs font-medium">已构筑基石</Text>
                             <View className="flex-row items-baseline mt-1.5">
-                                <Text className="text-xl font-bold text-[#07C160]">{totalDone}</Text>
+                                <Text className="text-xl font-bold text-[#3966A2]">{totalDone}</Text>
                                 <Text className="text-sm font-medium text-gray-400"> / {totalCount}</Text>
                             </View>
                         </View>
@@ -157,7 +157,7 @@ export default function AnalysisScreen() {
                                 <Pressable
                                     key={p}
                                     onPress={() => setSelectedPeriod(p)}
-                                    style={{ flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 8, backgroundColor: isActive ? '#07C160' : 'transparent' }}
+                                    style={{ flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 8, backgroundColor: isActive ? '#3966A2' : 'transparent' }}
                                 >
                                     <Text style={{ fontWeight: 'bold', fontSize: 13.5, color: isActive ? '#ffffff' : '#6B7280' }}>
                                         {p}
@@ -172,9 +172,9 @@ export default function AnalysisScreen() {
                 <View className="mt-6 px-4 pb-20">
                     <View className="flex-row items-center justify-between mb-4 px-1">
                         <Text className="text-[#181818] text-lg font-bold">{selectedPeriod}规划</Text>
-                        <TouchableOpacity onPress={() => setModalVisible(true)} className="flex-row items-center bg-[#07C160]/10 px-3 py-1.5 rounded-full">
-                            <Plus size={14} color="#07C160" />
-                            <Text className="text-[#07C160] text-[13px] font-bold ml-1">添加</Text>
+                        <TouchableOpacity onPress={() => setModalVisible(true)} className="flex-row items-center bg-[#3966A2]/10 px-3 py-1.5 rounded-full">
+                            <Plus size={14} color="#3966A2" />
+                            <Text className="text-[#3966A2] text-[13px] font-bold ml-1">添加</Text>
                         </TouchableOpacity>
                     </View>
 
@@ -182,7 +182,7 @@ export default function AnalysisScreen() {
                         {currentTasks.length === 0 ? (
                             <View className="items-center justify-center py-10 bg-white rounded-2xl border border-dashed border-gray-200">
                                 <Text className="text-gray-400 text-[14px] font-medium mb-3">当前时期还是一张白纸</Text>
-                                <TouchableOpacity onPress={() => setModalVisible(true)} className="bg-[#07C160] px-5 py-2 rounded-full">
+                                <TouchableOpacity onPress={() => setModalVisible(true)} className="bg-[#3966A2] px-5 py-2 rounded-full">
                                     <Text className="text-white font-bold text-sm">种下一颗种子</Text>
                                 </TouchableOpacity>
                             </View>
@@ -198,7 +198,7 @@ export default function AnalysisScreen() {
                                     {/* 完成勾选区 */}
                                     <TouchableOpacity onPress={() => toggleTask(task.id)} className="mr-3 p-1">
                                         {task.done ? (
-                                            <CheckCircle2 size={24} color="#07C160" />
+                                            <CheckCircle2 size={24} color="#3966A2" />
                                         ) : (
                                             <Circle size={24} color="#D1D5DB" />
                                         )}
@@ -215,7 +215,7 @@ export default function AnalysisScreen() {
                                         <View className="flex-row mt-1.5">
                                             <Text className={`text-[10px] px-2 py-0.5 rounded border ${task.done
                                                 ? 'text-gray-400 border-gray-200 bg-gray-100'
-                                                : 'text-[#07C160] border-[#07C160]/20 bg-[#07C160]/10'
+                                                : 'text-[#3966A2] border-[#3966A2]/20 bg-[#3966A2]/10'
                                                 }`}>
                                                 {task.category}
                                             </Text>
@@ -268,11 +268,11 @@ export default function AnalysisScreen() {
                                     key={cat}
                                     onPress={() => setNewTaskCategory(cat)}
                                     className={`px-4 py-2 rounded-full border ${newTaskCategory === cat
-                                        ? 'bg-[#07C160]/10 border-[#07C160] text-[#07C160]'
+                                        ? 'bg-[#3966A2]/10 border-[#3966A2] text-[#3966A2]'
                                         : 'bg-white border-gray-200 text-gray-600'
                                         }`}
                                 >
-                                    <Text className={`text-sm font-medium ${newTaskCategory === cat ? 'text-[#07C160]' : 'text-gray-500'}`}>
+                                    <Text className={`text-sm font-medium ${newTaskCategory === cat ? 'text-[#3966A2]' : 'text-gray-500'}`}>
                                         {cat}
                                     </Text>
                                 </TouchableOpacity>
@@ -281,7 +281,7 @@ export default function AnalysisScreen() {
 
                         <TouchableOpacity
                             onPress={addTask}
-                            className={`w-full py-4 rounded-xl items-center ${newTaskTitle.trim() ? 'bg-[#07C160]' : 'bg-gray-200'
+                            className={`w-full py-4 rounded-xl items-center ${newTaskTitle.trim() ? 'bg-[#3966A2]' : 'bg-gray-200'
                                 }`}
                             disabled={!newTaskTitle.trim()}
                         >
