@@ -5,10 +5,12 @@ import { agentExecutor, generateTitleAgent } from '@/services/llm';
 import { useSettings } from '@/services/SettingsContext';
 import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import clsx from 'clsx';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 
 import { Audio } from 'expo-av';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft, Keyboard as KeyboardIcon, Mic, PlusCircle, Smile } from 'lucide-react-native';
+import { ChevronLeft, Keyboard as KeyboardIcon, Mic, PlusCircle, Smile, Image as ImageIcon } from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, ImageBackground, Keyboard, KeyboardAvoidingView, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -78,6 +80,10 @@ const MessageBubble = React.memo(({ msg }: { msg: ChatMessage }) => {
                         )}
                     />
 
+                    {msg.imageUrl && (
+                        <Image source={{ uri: msg.imageUrl }} className="w-48 h-48 rounded-md mb-2 bg-[#e0e0e0]" resizeMode="cover" />
+                    )}
+
                     {msg.content === '__typing__' ? (
                         <TypingDots />
                     ) : (
@@ -124,6 +130,9 @@ export default function ChatDetailScreen() {
     const [recording, setRecording] = useState<Audio.Recording | null>(null);
     const [isTranscribing, setIsTranscribing] = useState(false);
 
+    const recordingRef = useRef<Audio.Recording | null>(null);
+    const isPreparingRef = useRef(false);
+
     // Initial Load & Keyboard Listeners
     useEffect(() => {
         if (id) {
@@ -145,25 +154,35 @@ export default function ChatDetailScreen() {
 
 
     async function startRecording() {
+        if (recordingRef.current || isPreparingRef.current) return;
+        isPreparingRef.current = true;
         try {
             await Audio.requestPermissionsAsync();
             await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-            const { recording } = await Audio.Recording.createAsync(
+            const { recording: newRecording } = await Audio.Recording.createAsync(
                 Audio.RecordingOptionsPresets.HIGH_QUALITY
             );
-            setRecording(recording);
+            recordingRef.current = newRecording;
+            setRecording(newRecording);
         } catch (err) {
             console.error('Failed to start recording', err);
+        } finally {
+            isPreparingRef.current = false;
         }
     }
 
     async function stopRecording() {
-        if (!recording) return;
+        const curRecording = recordingRef.current;
+        if (!curRecording) return;
+        
+        // Immediately clear references so UI can reset and new recording can be queued
+        recordingRef.current = null;
+        setRecording(null);
         setIsTranscribing(true);
+        
         try {
-            await recording.stopAndUnloadAsync();
-            const uri = recording.getURI();
-            setRecording(null);
+            await curRecording.stopAndUnloadAsync();
+            const uri = curRecording.getURI();
             if (uri) {
                 const text = await transcribeAudio(uri);
                 if (text) {
@@ -178,6 +197,21 @@ export default function ChatDetailScreen() {
             setIsTranscribing(false);
         }
     }
+
+    const pickImage = async () => {
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: 'images',
+            quality: 0.5,
+            base64: true,
+        });
+
+        if (!result.canceled && result.assets[0].uri) {
+            const uri = result.assets[0].uri;
+            const b64 = result.assets[0].base64;
+            // Immediate send
+            await _doSendMessage("请帮我提取这张图片中的关键信息。如果是日程、待办等，请帮我归类保存为备忘录。", uri, b64);
+        }
+    };
 
     const PAGE_SIZE = 30;
     const [hasMore, setHasMore] = useState(true);
@@ -242,13 +276,14 @@ export default function ChatDetailScreen() {
         await _doSendMessage(userText);
     };
 
-    const _doSendMessage = async (userText: string) => {
+    const _doSendMessage = async (userText: string, imageUrl?: string, base64?: string | null) => {
 
         const newUserMessage: ChatMessage = {
             id: Date.now().toString(),
             role: 'user',
             content: userText,
             timestamp: new Date().toISOString(),
+            imageUrl,
         };
 
         // 0. Ensure session exists in DB before adding message
@@ -291,13 +326,23 @@ export default function ChatDetailScreen() {
                 .filter(m => m.id !== 'welcome' && m.id !== newUserMessage.id)
                 .map(m => m.role === 'user' ? new HumanMessage(m.content) : new AIMessage(m.content));
 
+            let inputMessage: HumanMessage;
+            if (imageUrl && base64) {
+               inputMessage = new HumanMessage({ content: [
+                   { type: "text", text: userText },
+                   { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64}` } }
+               ]});
+            } else {
+               inputMessage = new HumanMessage(userText);
+            }
+
             // 3. 调用 API 流式输出
             let accumulatedContent = '';
             let lastUpdateTime = 0;
 
             const stream = await agentExecutor.streamEvents(
                 {
-                    messages: [...chatHistory, new HumanMessage(userText)]
+                    messages: [...chatHistory, inputMessage]
                 },
                 { version: "v2" }
             );
@@ -501,7 +546,7 @@ export default function ChatDetailScreen() {
                             <Text className="font-medium text-white text-sm">发送</Text>
                         </TouchableOpacity>
                     ) : (
-                        <TouchableOpacity className="p-2 mb-1">
+                        <TouchableOpacity className="p-2 mb-1" onPress={pickImage}>
                             <PlusCircle size={28} color="#181818" strokeWidth={1.5} />
                         </TouchableOpacity>
                     )}

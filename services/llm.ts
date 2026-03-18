@@ -3,6 +3,7 @@ import { DynamicStructuredTool } from "@langchain/core/tools";
 import { ChatOpenAI } from "@langchain/openai";
 import { z } from "zod";
 import { addMemo } from "./db";
+import { fetch as expoFetch } from "expo/fetch";
 
 export { SYSTEM_PROMPT } from './prompt';
 
@@ -11,6 +12,7 @@ export interface ChatMessage {
     role: 'system' | 'user' | 'assistant';
     content: string;
     timestamp?: string;
+    imageUrl?: string;
 }
 
 export const llm = new ChatOpenAI({
@@ -18,6 +20,7 @@ export const llm = new ChatOpenAI({
     apiKey: CONFIG.VOLC_API_KEY,
     configuration: {
         baseURL: "https://ark.cn-beijing.volces.com/api/v3",
+        fetch: expoFetch as any,
     },
     maxRetries: 2,
     timeout: 15000,
@@ -30,6 +33,7 @@ export const titleLLM = new ChatOpenAI({
     apiKey: CONFIG.VOLC_API_KEY,
     configuration: {
         baseURL: "https://ark.cn-beijing.volces.com/api/v3",
+        fetch: expoFetch as any,
     },
     temperature: 0.3,
     streaming: false,

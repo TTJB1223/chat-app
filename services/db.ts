@@ -15,6 +15,7 @@ export interface ChatMessage {
     role: 'system' | 'user' | 'assistant';
     content: string;
     timestamp: string;
+    imageUrl?: string;
 }
 
 export interface ChatSession {
@@ -70,9 +71,12 @@ export const initDb = async () => {
         // Migration: add targetDate if not exists
         try {
             await db.execAsync("ALTER TABLE memos ADD COLUMN targetDate TEXT;");
-        } catch (e) {
-            // Column might already exist
-        }
+        } catch (e) {}
+
+        // Migration: add imageUrl to messages if not exists
+        try {
+            await db.execAsync("ALTER TABLE messages ADD COLUMN imageUrl TEXT;");
+        } catch (e) {}
 
         console.log('✅ SQLite Database Initialized');
     } catch (error) {
@@ -260,8 +264,8 @@ export const addMessageToSession = async (sessionId: string, message: ChatMessag
         // Ensure session exists (double check, though ensureSessionCreated should be called)
         // Then insert message
         await db.runAsync(
-            'INSERT INTO messages (id, sessionId, role, content, timestamp) VALUES (?, ?, ?, ?, ?)',
-            message.id, sessionId, message.role, message.content, message.timestamp
+            'INSERT INTO messages (id, sessionId, role, content, timestamp, imageUrl) VALUES (?, ?, ?, ?, ?, ?)',
+            message.id, sessionId, message.role, message.content, message.timestamp, message.imageUrl || null
         );
     } else {
         const session = memorySessions.find(s => s.id === sessionId);
