@@ -4,27 +4,8 @@ import { Platform } from 'react-native';
 
 
 
-export interface ChatMessage {
-    id: string;
-    role: 'system' | 'user' | 'assistant';
-    content: string;
-    timestamp: string;
-    imageUrl?: string;
-}
 
-export interface ChatSession {
-    id: string;
-    title: string;
-    createdAt: string;
-    messages: ChatMessage[];
-}
 
-let db: SQLite.SQLiteDatabase | null = null;
-
-// --- In-Memory Fallback for Web ---
-let memoryMemos: Memo[] = [];
-let memorySessions: ChatSession[] = [];
-let nextMemoId = 1;
 
 export const initDb = async () => {
     if (Platform.OS === 'web') {
