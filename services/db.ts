@@ -2,13 +2,7 @@
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-export interface Memo {
-    id: number;
-    content: string;
-    category: string;
-    timestamp: string;
-    targetDate?: string;
-}
+
 
 export interface ChatMessage {
     id: string;
